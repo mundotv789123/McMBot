@@ -40,7 +40,7 @@
         </dependency>
     </dependencies>
     <build>
-        <finalName>FamilCommons</finalName>
+        <finalName>McMBot</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
