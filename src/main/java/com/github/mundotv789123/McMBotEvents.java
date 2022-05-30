@@ -14,10 +14,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class McMBotEvents extends ListenerAdapter implements Listener {
 
@@ -84,6 +86,13 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
     }
 
     @EventHandler
+    void onPlayerDropItemEvent(PlayerDropItemEvent e) {
+        if (cancelEvent(e.getPlayer())) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler
     void onPlayerQuit(PlayerQuitEvent e) {
         Player p = e.getPlayer();
         String nick = p.getName().toLowerCase();
@@ -95,14 +104,14 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
     @Override
     public void onButtonClick(ButtonClickEvent e) {
         String[] splited = e.getComponentId().split(":");
-        if (splited.length != 2) {
+        if (splited.length != 3) {
             return;
         }
         if (!e.getUser().getId().equals(splited[1])) {
             e.deferEdit().queue();
             return;
         }
-        if (!players.contains(splited[2])) {
+        if (players.contains(splited[2])) {
             e.getMessage().delete().queue();
             return;
         }
@@ -113,12 +122,28 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
         switch (splited[0]) {
             case "mcmbot_confirm":
                 players.add(splited[2]);
-                e.reply(plugin.getConfig().getString("discord_messages.success")).queue();
+                e.getTextChannel().sendMessage(plugin.getConfig().getString("discord_messages.success").replace("%discord%", e.getUser().getAsMention())).queue();
                 break;
-            case "mcmbot_cancel":
-                Bukkit.getPlayer(splited[1]).kickPlayer("");
+            case "mcmbot_block":
+                Player p = Bukkit.getPlayer(splited[2]);
+                if (plugin.getConfig().isList("config.refused_commands")) {
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            List<String> commands = plugin.getConfig().getStringList("config.refused_commands");
+                            for (String command : commands) {
+                                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command.replace("%player%", p.getName()).replace("%ip%", p.getAddress().getHostString()).replace("&", "§"));
+                            }
+                            p.kickPlayer("");
+                        }
+                    }.runTask(plugin);
+                }
+
                 break;
+            default:
+                return;
         }
+        e.getMessage().delete().queue();
     }
 
     @Nullable
@@ -141,7 +166,7 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
         if (tc != null) {
             MessageAction ma = tc.sendMessage(message);
             if (dcId != null) {
-                ma = ma.setActionRow(Button.success("mcmbot_confirm:" + dcId + ":" + nick, "Sim")).setActionRow(Button.danger("mcmbot_block:" + dcId + ":" + nick, "Não"));
+                ma = ma.setActionRow(Button.success("mcmbot_confirm:" + dcId + ":" + nick, "Sim"), Button.danger("mcmbot_block:" + dcId + ":" + nick, "Não"));
             }
             ma.queue();
         }

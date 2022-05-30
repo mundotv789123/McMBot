@@ -2,7 +2,8 @@ config:
   token: token do bot
   login_chat: id do canal de login
   permission: 'mcmbot.staff'
-  refused_command: 'ban-ip %ip% &cVocê foi banido pelo &emcmbot.'
+  refused_commands:
+  - 'ban-ip %ip% &cVocê foi banido pelo &emcmbot.'
 
 kick_messages:
   discord_not_found: '&aSeu discord não foi vinculado a sua conta.'
