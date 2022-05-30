@@ -1,8 +1,11 @@
 package com.github.mundotv789123;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -19,17 +22,20 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 
 public class McMBotEvents extends ListenerAdapter implements Listener {
 
     private final List<String> players = new ArrayList();
+    private final Map<String, String> messages = new HashMap();
     private final McMBot plugin;
 
     public McMBotEvents(McMBot plugin) {
         this.plugin = plugin;
     }
-
+    
+    /* eventos do servidor de minecraft */
     @EventHandler
     protected void onPlayerJoin(PlayerJoinEvent e) {
         Player p = e.getPlayer();
@@ -54,9 +60,31 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
         message = message.replace("%player%", p.getName());
         message = message.replace("%ip%", p.getAddress().getHostString());
         message = message.replace("%discord%", "<@" + dcId + ">");
-        sendDiscordMessage(message, dcId, nick);
+        String msgid = sendDiscordMessage(message, dcId, nick);
+        if (msgid != null) {
+            messages.put(nick, msgid);
+        }
+    }
+    
+    @EventHandler
+    protected void onPlayerQuit(PlayerQuitEvent e) {
+        Player p = e.getPlayer();
+        String nick = p.getName().toLowerCase();
+        if (players.contains(nick)) {
+            players.remove(nick);
+            return;
+        }
+        TextChannel tc = plugin.getJda().getTextChannelById(plugin.getConfig().getString("config.login_chat"));
+        if (tc == null) {
+            return;
+        }
+        if (messages.containsKey(nick)) {
+            deleteMessage(nick);
+        }
+        sendDiscordMessage(plugin.getConfig().getString("discord_messages.logout").replace("%player%", p.getName()).replace("%ip%", p.getAddress().getHostString()), null, null);
     }
 
+    /* eventos de proteção */
     @EventHandler
     protected void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent e) {
         if (cancelEvent(e.getPlayer())) {
@@ -79,52 +107,64 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
     }
 
     @EventHandler
-    void onPlayerInteractEvent(PlayerInteractEvent e) {
+    protected void onPlayerInteractEvent(PlayerInteractEvent e) {
         if (cancelEvent(e.getPlayer())) {
             e.setCancelled(true);
         }
     }
 
     @EventHandler
-    void onPlayerDropItemEvent(PlayerDropItemEvent e) {
+    protected void onPlayerDropItemEvent(PlayerDropItemEvent e) {
         if (cancelEvent(e.getPlayer())) {
             e.setCancelled(true);
         }
     }
 
     @EventHandler
-    void onPlayerQuit(PlayerQuitEvent e) {
-        Player p = e.getPlayer();
-        String nick = p.getName().toLowerCase();
-        if (players.contains(nick)) {
-            players.remove(nick);
+    protected void onPluginDisableEvent(PluginDisableEvent e) {
+        if (e.getPlugin().equals(plugin)) {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.hasPermission(plugin.getConfig().getString("config.permission"))) {
+                    deleteMessage(p.getName().toLowerCase());
+                    p.kickPlayer(plugin.getConfig().getString("kick_messages.restarting").replace("&", "§"));
+                }
+            }
         }
     }
 
+    /* eventos do bot do discord */
     @Override
     public void onButtonClick(ButtonClickEvent e) {
         String[] splited = e.getComponentId().split(":");
+        /* verificando comando */
+        if (!splited[0].equals("mcmbot")) {
+            return;
+        }
         if (splited.length != 3) {
             return;
         }
-        if (!e.getUser().getId().equals(splited[1])) {
+        
+        /* verificação de segurança */
+        if (!e.getTextChannel().getId().equals(plugin.getConfig().getString("config.login_chat"))) {
+            return;
+        }
+        if (!e.getUser().getId().equals(getDiscordIdByNick(splited[2]))) {
             e.deferEdit().queue();
             return;
         }
+        
         if (players.contains(splited[2])) {
-            e.getMessage().delete().queue();
+            deleteMessage(splited[2]);
             return;
         }
-        if (!splited[1].equals(getDiscordIdByNick(splited[2]))) {
-            e.deferEdit().queue();
-            return;
-        }
-        switch (splited[0]) {
-            case "mcmbot_confirm":
+        
+        /* executando comando */
+        switch (splited[1]) {
+            case "confirm":
                 players.add(splited[2]);
                 e.getTextChannel().sendMessage(plugin.getConfig().getString("discord_messages.success").replace("%discord%", e.getUser().getAsMention())).queue();
                 break;
-            case "mcmbot_block":
+            case "block":
                 Player p = Bukkit.getPlayer(splited[2]);
                 if (plugin.getConfig().isList("config.refused_commands")) {
                     new BukkitRunnable() {
@@ -143,9 +183,10 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
             default:
                 return;
         }
-        e.getMessage().delete().queue();
+        deleteMessage(splited[2]);
     }
 
+    /* funções úteis */
     @Nullable
     private String getDiscordIdByNick(String nick) {
         List<String> accounts = plugin.getConfig().getStringList("accounts");
@@ -161,15 +202,16 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
         return null;
     }
 
-    private void sendDiscordMessage(String message, String dcId, String nick) {
+    private String sendDiscordMessage(String message, String dcId, String nick) {
         TextChannel tc = plugin.getJda().getTextChannelById(plugin.getConfig().getString("config.login_chat"));
         if (tc != null) {
             MessageAction ma = tc.sendMessage(message);
-            if (dcId != null) {
-                ma = ma.setActionRow(Button.success("mcmbot_confirm:" + dcId + ":" + nick, "Sim"), Button.danger("mcmbot_block:" + dcId + ":" + nick, "Não"));
+            if (nick != null) {
+                ma = ma.setActionRow(Button.success("mcmbot:confirm:" + nick, "Sim"), Button.danger("mcmbot:block:" + nick, "Não"));
             }
-            ma.queue();
+            return ma.complete().getId();
         }
+        return null;
     }
 
     private boolean cancelEvent(Player p) {
@@ -178,5 +220,20 @@ public class McMBotEvents extends ListenerAdapter implements Listener {
             return false;
         }
         return p.hasPermission(plugin.getConfig().getString("config.permission"));
+    }
+
+    public void deleteMessage(String nick) {
+        TextChannel tc = plugin.getJda().getTextChannelById(plugin.getConfig().getString("config.login_chat"));
+        if (tc == null) {
+            return;
+        }
+        if (!messages.containsKey(nick)) {
+            return;
+        }
+        Message msg = tc.retrieveMessageById(messages.get(nick)).complete();
+        if (msg != null) {
+            msg.delete().queue();
+        }
+        messages.remove(nick);
     }
 }

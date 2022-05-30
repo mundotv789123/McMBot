@@ -6,3 +6,4 @@ version: 2.0
 commands:
   mcmbot:
     permission: 'mcmbot.admin'
+    usage: '/mcmbot reload'

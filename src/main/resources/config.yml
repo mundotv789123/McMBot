@@ -6,12 +6,14 @@ config:
   - 'ban-ip %ip% &cVocê foi banido pelo &emcmbot.'
 
 kick_messages:
-  discord_not_found: '&aSeu discord não foi vinculado a sua conta.'
+  discord_not_found: '&cSeu discord não foi vinculado a sua conta.'
+  restarting: '&a[mcmbot] &cServidor reiniciando...'
   
 discord_messages:
   permission: '%player% (%ip%) entrou no servidor porém não teve o discord vinculado.'
   login: '%discord% Sua conta [%player%] acabou de logar no servidor, confirmar acesso?'
   success: '%discord% Acesso liberado!'
+  logout: '%player% [%ip%] Deslogou sem fazer autenticação!'
   
 accounts:
 #- 'nickMinecraft:idDiscord'
