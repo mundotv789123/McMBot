@@ -1,0 +1,8 @@
+main: com.github.mundotv789123.McMBot
+name: McMBot
+website: https://github.com/mundotv789123
+author: mundotv789123
+version: 2.0
+commands:
+  mcmbot:
+    permission: 'mcmbot.admin'
